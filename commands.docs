@@ -1,0 +1,121 @@
+
+ports
+    -> host:5433  <->  container:5432
+
+build docker : docker-compose up --build
+
+-c : used to run string as command in shell
+
+-d : Starts containers in the background, Keeps them running until you stop them manually.
+
+To see logs while they’re running:
+    -> docker-compose logs -f auth_service
+    -> docker-compose logs -f chat_service
+
+docker build no-cache : docker-compose build --no-cache
+
+interactive cmd : docker exec -it <container_name_or_id> bash
+
+
+************ Flow of http://0.0.0.0:8001/chats/protected-test/ api ******************
+
+Here's the step-by-step flow when you hit this endpoint:
+
+  Step 1: Request Routing
+
+  - File: chat_service/chat_service/urls.py:22
+  - Action: Django routes /chats/protected-test/ to chat_app.urls
+
+  Step 2: App URL Resolution
+
+  - File: chat_service/chat_app/urls.py:7
+  - Action: Routes to views.protected_test function with name 'protected_test'
+
+  Step 3: View Function Entry
+
+  - File: chat_service/chat_app/views.py:78
+  - Function: protected_test(request)
+  - Decorators Applied:
+    - @api_view(['GET']) - Restricts to GET requests only
+    - @require_auth - Custom authentication decorator
+
+  Step 4: Authentication Decorator Execution
+
+  - File: chat_service/chat_app/views.py:47-68
+  - Function: require_auth() wrapper function
+  - Actions:
+    a. Extracts Authorization header from request (views.py:49)
+    b. Validates header format (must start with 'Bearer ') (views.py:51)
+    c. Extracts token from header (views.py:56)
+    d. Calls check_user(token) function (views.py:57)
+
+  Step 5: Token Verification with Auth Service
+
+  - File: chat_service/chat_app/views.py:12-41
+  - Function: check_user(token)
+  - Actions:
+    a. Gets AUTH_SERVICE_URL from environment variables (views.py:20)
+    b. Makes HTTP POST request to auth service at
+  {AUTH_SERVICE_URL}/users/verify-token/ (views.py:24-32)
+    c. Headers sent:
+        - X-Service-Key: Microservice secret key from settings (views.py:27)
+      - Content-Type: application/json
+    d. Request body: {"token": token} (views.py:30)
+    e. Sets 5-second timeout (views.py:31)
+
+  Step 6: Auth Service Processing
+
+  - Service: Auth Service
+  - File: auth_service/users/views.py:92-129
+  - Function: verify_token_microservice(request)
+  - Actions:
+    a. Validates microservice secret key (views.py:98-102)
+    b. Extracts token from request data (views.py:105)
+    c. Verifies JWT token using AccessToken(token) (views.py:113)
+    d. Extracts user_id from token (views.py:114)
+    e. Retrieves user from database (views.py:117)
+    f. Serializes user data with ProfileSerializer (views.py:118)
+    g. Returns response with user data (views.py:120-123)
+
+  Step 7: Auth Response Processing
+
+  - File: chat_service/chat_app/views.py:34-38
+  - Actions:
+    a. Checks if auth service returned status 200
+    b. Parses JSON response
+    c. Validates 'valid' field in response
+    d. Returns user data if valid, None if invalid
+
+  Step 8: Authentication Decision
+
+  - File: chat_service/chat_app/views.py:59-66
+  - Actions:
+    a. If user_data is None: Returns 401 error
+    b. If user_data exists: Adds user_data to request.user_data and proceeds
+
+  Step 9: Protected View Execution
+
+  - File: chat_service/chat_app/views.py:78-85
+  - Function: protected_test(request)
+  - Actions:
+    a. Creates response with success message
+    b. Includes user data from request.user_data
+    c. Returns 200 OK response
+
+  Services & Functions Called:
+
+  1. Chat Service: chat_app.views.protected_test
+  2. Chat Service: chat_app.views.require_auth (decorator)
+  3. Chat Service: chat_app.views.check_user
+  4. Auth Service: users.views.verify_token_microservice
+  5. External: requests.post() for inter-service communication
+
+  Response Flow:
+
+  - Success: Returns user data with 200 status
+  - No Auth Header: Returns 401 error
+  - Invalid Token: Returns 401 error
+  - Auth Service Down: Returns 401 error (handled as invalid token)
+
+
+*********************************************************************

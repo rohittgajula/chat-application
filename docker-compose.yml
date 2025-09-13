@@ -1,0 +1,130 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:latest
+    container_name: redis
+    ports:
+      - "6379:6379" # LEFT(local port) : RIGHT(contianer port)
+    restart: unless-stopped # only stops when stopped manually
+    networks: # all the services are connected through same network(chat-network) using redis
+      - chat-network
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - chat-network
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: true
+    networks:
+      - chat-network
+
+  auth_service:
+    build: ./auth_service # looks for Dockerfile in this folder
+    container_name: auth_service
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./auth_service:/app # copies auth_service project folder to app folder
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+    command: >
+      sh -c "pip install -r requirements.txt &&
+             python3 manage.py makemigrations &&
+             python3 manage.py migrate &&
+             python3 manage.py runserver 0.0.0.0:8000"
+    networks:
+      - chat-network
+    environment:
+      - DJANGO_ALLOWED_HOSTS=*
+
+  chat_service:
+    build: ./chat_service
+    container_name: chat_service
+    ports:
+      - "8001:8001"
+    expose:
+      - "8001"
+    volumes:
+      - ./chat_service:/app
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - redis
+      - auth_service
+    restart: unless-stopped
+    command: >
+      sh -c "pip install -r requirements.txt &&
+             python3 manage.py makemigrations &&
+             python3 manage.py migrate &&
+             python3 manage.py runserver 0.0.0.0:8001"
+    networks:
+      - chat-network
+    environment:
+      - AUTH_SERVICE_URL=http://auth_service:8000
+      - DJANGO_ALLOWED_HOSTS=*
+
+  celery:
+    build: ./auth_service
+    container_name: celery
+    depends_on:
+      - redis
+    volumes:
+      - ./auth_service:/app
+      - ./.env:/app/.env
+    env_file:
+      - .env
+    restart: unless-stopped
+    command: >
+      sh -c "pip install -r requirements.txt &&
+              celery -A auth_service.celery worker --loglevel=info"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    networks:
+      - chat-network
+
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    environment:
+      POSTGRES_USER: auth_user
+      POSTGRES_PASSWORD: auth_pass
+      POSTGRES_DB: auth_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - chat-network
+
+volumes:
+  postgres_data:
+
+networks:
+  chat-network:
+    driver: bridge
