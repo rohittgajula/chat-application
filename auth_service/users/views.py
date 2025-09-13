@@ -6,6 +6,7 @@ from .models import CustomUser, Contact
 from .serializers import ProfileSerializer, CreateUpdateSerializer, VerifyAcountSerializer
 from rest_framework import status
 from .tasks import send_otp_via_mail, otp_timer
+from rest_framework_simplejwt.tokens import RefreshToken
 
 
 @api_view(['GET'])
@@ -122,4 +123,22 @@ def verify_token_microservice(request):
             'valid': False,
             'error': str(e)
         }, status=status.HTTP_401_UNAUTHORIZED)
+
+
+class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            refresh_token = request.data['refresh']
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+            return Response({
+                "message": "Logout Sucessfull."
+            })
+
+        except Exception as e:
+            return Response({
+                "error": f"Invalid token: {str(e)}"
+            }, status=status.HTTP_400_BAD_REQUEST)
 
