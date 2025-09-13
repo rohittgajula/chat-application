@@ -118,11 +118,11 @@ WSGI_APPLICATION = 'auth_service.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('POSTGRES_DB', 'auth_db'),
-        'USER': os.getenv('POSTGRES_USER', 'auth_user'),
-        'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'auth_pass'),
-        'HOST': os.getenv('POSTGRES_HOST', 'postgres'),
-        'PORT': os.getenv('POSTGRES_PORT', '5432'),
+        'NAME': os.getenv('AUTH_SERVICE_POSTGRES_DB', 'auth_db'),
+        'USER': os.getenv('AUTH_SERVICE_POSTGRES_USER', 'auth_user'),
+        'PASSWORD': os.getenv('AUTH_SERVICE_POSTGRES_PASSWORD', 'auth_pass'),
+        'HOST': os.getenv('AUTH_SERVICE_POSTGRES_HOST', 'postgres'),
+        'PORT': os.getenv('AUTH_SERVICE_POSTGRES_PORT', '5432'),
     }
 }
 

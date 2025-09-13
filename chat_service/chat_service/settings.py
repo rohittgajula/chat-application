@@ -85,8 +85,12 @@ WSGI_APPLICATION = 'chat_service.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.getenv('CHAT_SERVICE_POSTGRES_DB', 'chat_db'),
+        'USER': os.getenv('CHAT_SERVICE_POSTGRES_USER', 'auth_user'),
+        'PASSWORD': os.getenv('CHAT_SERVICE_POSTGRES_PASSWORD', 'auth_pass'),
+        'HOST': os.getenv('CHAT_SERVICE_POSTGRES_HOST', 'postgres'),
+        'PORT': os.getenv('CHAT_SERVICE_POSTGRES_PORT', '5432'),
     }
 }
 
