@@ -11,6 +11,8 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import os
+from decouple import config
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -20,15 +22,15 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-4_qea4wk#p-x=9sy%tpyah$dxjh2dle=+w^!e^+)jcu^96vrx('
+SECRET_KEY = config('DJANGO_SECRET_KEY_CHAT', default='django-insecure-4_qea4wk#p-x=9sy%tpyah$dxjh2dle=+w^!e^+)jcu^96vrx(')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = ["*", "localhost", "127.0.0.1", "0.0.0.0", "chat_service"]
+ALLOWED_HOSTS = config('DJANGO_ALLOWED_HOSTS', default='*').split(',')
 
 # Microservice authentication
-MICROSERVICE_SECRET_KEY = "microservice-secret-key-2024"
+MICROSERVICE_SECRET_KEY = config('MICROSERVICE_SECRET_KEY', default='microservice-secret-key-2024')
 
 
 # Application definition

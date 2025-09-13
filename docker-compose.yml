@@ -5,18 +5,20 @@ services:
     image: redis:latest
     container_name: redis
     ports:
-      - "6379:6379" # LEFT(local port) : RIGHT(contianer port)
-    restart: unless-stopped # only stops when stopped manually
-    networks: # all the services are connected through same network(chat-network) using redis
+      - "${REDIS_EXTERNAL_PORT}:${REDIS_PORT}"
+    restart: unless-stopped
+    networks:
       - chat-network
+    env_file:
+      - .env
 
   auth_service:
-    build: ./auth_service # looks for Dockerfile in this folder
+    build: ./auth_service
     container_name: auth_service
     ports:
-      - "8000:8000"
+      - "${AUTH_SERVICE_PORT}:${AUTH_SERVICE_PORT}"
     volumes:
-      - ./auth_service:/app # copies auth_service project folder to app folder
+      - ./auth_service:/app
     env_file:
       - .env
     depends_on:
@@ -27,19 +29,17 @@ services:
       sh -c "pip install -r requirements.txt &&
              python3 manage.py makemigrations &&
              python3 manage.py migrate &&
-             python3 manage.py runserver 0.0.0.0:8000"
+             python3 manage.py runserver 0.0.0.0:${AUTH_SERVICE_PORT}"
     networks:
       - chat-network
-    environment:
-      - DJANGO_ALLOWED_HOSTS=*
 
   chat_service:
     build: ./chat_service
     container_name: chat_service
     ports:
-      - "8001:8001"
+      - "${CHAT_SERVICE_PORT}:${CHAT_SERVICE_PORT}"
     expose:
-      - "8001"
+      - "${CHAT_SERVICE_PORT}"
     volumes:
       - ./chat_service:/app
     env_file:
@@ -53,12 +53,9 @@ services:
       sh -c "pip install -r requirements.txt &&
              python3 manage.py makemigrations &&
              python3 manage.py migrate &&
-             python3 manage.py runserver 0.0.0.0:8001"
+             python3 manage.py runserver 0.0.0.0:${CHAT_SERVICE_PORT}"
     networks:
       - chat-network
-    environment:
-      - AUTH_SERVICE_URL=http://auth_service:8000
-      - DJANGO_ALLOWED_HOSTS=*
 
   celery:
     build: ./auth_service
@@ -67,28 +64,26 @@ services:
       - redis
     volumes:
       - ./auth_service:/app
-      - ./.env:/app/.env
     env_file:
       - .env
     restart: unless-stopped
     command: >
       sh -c "pip install -r requirements.txt &&
               celery -A auth_service.celery worker --loglevel=info"
-    environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     networks:
       - chat-network
 
   postgres:
     image: postgres:15
     container_name: postgres
+    env_file:
+      - .env
     environment:
-      POSTGRES_USER: auth_user
-      POSTGRES_PASSWORD: auth_pass
-      POSTGRES_DB: auth_db
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
     ports:
-      - "5433:5432"
+      - "${POSTGRES_EXTERNAL_PORT}:${POSTGRES_PORT}"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped

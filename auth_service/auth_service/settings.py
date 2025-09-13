@@ -24,15 +24,15 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-#r4#^0xot9wh(_p$7p(&*dgkj+6t4@@l4e54*^2@g!=q$873%l'
+SECRET_KEY = config('DJANGO_SECRET_KEY_AUTH', default='django-insecure-#r4#^0xot9wh(_p$7p(&*dgkj+6t4@@l4e54*^2@g!=q$873%l')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = ['*', 'localhost', '127.0.0.1', '0.0.0.0', 'auth_service', 'chat_service']
+ALLOWED_HOSTS = config('DJANGO_ALLOWED_HOSTS', default='*').split(',')
 
 # Microservice authentication
-MICROSERVICE_SECRET_KEY = "microservice-secret-key-2024"
+MICROSERVICE_SECRET_KEY = config('MICROSERVICE_SECRET_KEY', default='microservice-secret-key-2024')
 
 
 # Application definition
@@ -126,8 +126,8 @@ DATABASES = {
 }
 
 # celery settings
-CELERY_BROKER_URL = 'redis://redis:6379/0'
-CELERY_RESULT_BACKEND = 'redis://redis:6379/0'
+CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://redis:6379/0')
+CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default='redis://redis:6379/0')
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'

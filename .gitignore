@@ -1,0 +1,39 @@
+
+# python cache
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+
+# Virtual env
+venv/
+env/
+.venv/
+ENV/
+
+# Django stuff
+db.sqlite3
+media/
+staticfiles/
+*.log
+
+# Environment variables
+
+# .env
+# .env.local
+# .env.production
+# .env.staging
+# .env.*.local
+# *.env.local
+
+# IDE / Editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+
+# Docker
+postgres_data/
