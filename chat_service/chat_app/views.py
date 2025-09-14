@@ -64,7 +64,7 @@ def require_auth(view_func):                # decorator
 @require_auth
 def protected_test(request):            # test endpoint requires auth
     return Response({
-        "message": "Authentication successful!",
+        "message": "Authentication successfull!",
         "user": request.user_data
     }, status=status.HTTP_200_OK)
 
@@ -92,3 +92,111 @@ def test_auth(request):                 # test endpoint without auth
             'error': 'Invalid or expired token',
             'auth_service_url': AUTH_SERVICE_URL
         }, status=status.HTTP_401_UNAUTHORIZED)
+
+
+
+def search_user_by_username(usernames):
+    try:
+        from django.conf import settings
+
+        if not AUTH_SERVICE_URL:
+            return []
+        
+        response = requests.post(
+            f"{AUTH_SERVICE_URL}/users/search-by-username/",
+            headers={
+                "X-Service-Key": getattr(settings, 'MICROSERVICE_SECRET_KEY', ''),
+                "Content-Type": "application/json"
+            },
+            json={"usernames": usernames},
+            timeout=10
+        )
+
+        if response.status_code == 200:
+            return response.json().get('users', [])
+        return []
+
+    except Exception as e:
+        print(f"User search error: {e}")
+        return []
+
+
+@api_view(['POST'])
+@require_auth
+def CreateRoom(request):
+    from .serializers import RoomSerializer, CreateRoomSerializer
+    from .models import Room, RoomMembers
+
+    data = request.data
+    print(f"received data: {data}")
+    print(F"CHAT SERVICE: user_data: {request.user_data}")
+    serializer = CreateRoomSerializer(data=data)
+
+    if serializer.is_valid():
+        usernames = serializer.validated_data['usernames']
+        is_group = serializer.validated_data['is_group']
+        print(f"CHAT SERVICE: serializer data: {serializer.data}")
+
+        found_users = search_user_by_username(usernames)
+
+        if len(found_users) != len(usernames):
+            found_usernames = [user['username'] for user in found_users]
+            missing_usernames = list(set(usernames) - set(found_usernames))
+            return Response({
+                "error": f"users not found: {missing_usernames}"
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # get user ids
+        other_user_ids = [user['id'] for user in found_users]
+        current_user_id = request.user_data['id']
+        current_username = request.user_data['username']
+
+        if is_group:
+            room = Room.objects.create(
+                room_name = serializer.validated_data['room_name'],
+                description = serializer.validated_data.get('description', ''),
+                is_group=True,
+                created_by=current_user_id
+            )
+
+            # add creater as admin
+            RoomMembers.objects.create(room=room, user=current_user_id, role="admin")
+
+            # add other users
+            for user_id in other_user_ids:
+                RoomMembers.objects.create(
+                    room=room,
+                    user=user_id,
+                    role="user"
+                )
+                message = f"Group room created with {len(other_user_ids) + 1} members"
+        else:
+            other_user_ids=other_user_ids[0]
+            other_username = found_users[0]['username']
+
+            room_name = f"chat-{current_username}-{other_username}"
+
+            room, created = Room.get_or_create_direct_room(
+                                current_user_id, 
+                                other_user_ids,
+                                room_name=room_name
+                        )
+
+            message = "direct room created" if created else "existing direct room found"
+
+        # ============ broadcast room creation for ws ==============
+
+        # ==========================================================
+
+        response_serializer = RoomSerializer(room)
+        return Response({
+            'message': message,
+            'room': response_serializer.data
+        }, status=status.HTTP_201_CREATED)
+    
+    return Response({
+        "error": "Invalid data",
+        "details": serializer.errors
+    }, status=status.HTTP_400_BAD_REQUEST)
+
+

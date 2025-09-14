@@ -5,7 +5,7 @@ from django.db import transaction
 class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
-        fields = ['id', 'email', 'first_name', 'last_name', 'is_verified']
+        fields = ['id', 'email', 'first_name', 'username', 'last_name', 'is_verified']
 
 class CreateUpdateSerializer(serializers.ModelSerializer):
     class Meta:

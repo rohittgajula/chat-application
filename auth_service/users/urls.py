@@ -9,6 +9,7 @@ urlpatterns = [
     path('resend-otp/', views.resend_otp, name='resend-otp'),
     path('verify-token/', views.verify_token_microservice, name='verify-token-microservice'),
     path('logout/', views.LogoutView.as_view(), name='logout-user'),
+    path('search-by-username/', views.search_by_username, name='search-by-users'),
 ]
 
 

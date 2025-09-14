@@ -142,3 +142,23 @@ class LogoutView(APIView):
                 "error": f"Invalid token: {str(e)}"
             }, status=status.HTTP_400_BAD_REQUEST)
 
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def search_by_username(request):
+    usernames = request.data.get('usernames', [])
+    print(f"AUTH SERVICE: usernames: {usernames}")
+    if not isinstance(usernames, list) or not usernames:
+        return Response({
+            "error": "usernames must be a non-empty list"
+        }, status=status.HTTP_400_BAD_REQUEST)
+    print(f"AUTH SERVICE: *********")
+    users = CustomUser.objects.filter(username__in=usernames)
+    print(f"AUTH SERVICE: matched users : {users}")
+    serializer = ProfileSerializer(users, many=True)
+    return Response({
+        "valid": True,
+        "users": serializer.data
+    }, status=status.HTTP_200_OK)
+
