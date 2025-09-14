@@ -17,6 +17,7 @@ services:
     container_name: auth_service
     ports:
       - "${AUTH_SERVICE_PORT}:${AUTH_SERVICE_PORT}"
+      - "5677:5677"
     volumes:
       - ./auth_service:/app
     env_file:
@@ -29,7 +30,11 @@ services:
       sh -c "pip install -r requirements.txt &&
              python3 manage.py makemigrations &&
              python3 manage.py migrate &&
-             python3 manage.py runserver 0.0.0.0:${AUTH_SERVICE_PORT}"
+             if [ \"$DEBUG_MODE\" = \"true\" ]; then
+                python3 -m debugpy --listen 0.0.0.0:5677 --wait-for-client manage.py runserver 0.0.0.0:${AUTH_SERVICE_PORT};
+             else
+                python3 manage.py runserver 0.0.0.0:${AUTH_SERVICE_PORT};
+             fi"
     networks:
       - chat-network
 
@@ -38,6 +43,7 @@ services:
     container_name: chat_service
     ports:
       - "${CHAT_SERVICE_PORT}:${CHAT_SERVICE_PORT}"
+      - "5678:5678"
     expose:
       - "${CHAT_SERVICE_PORT}"
     volumes:
@@ -53,7 +59,11 @@ services:
       sh -c "pip install -r requirements.txt &&
              python3 manage.py makemigrations &&
              python3 manage.py migrate &&
-             python3 manage.py runserver 0.0.0.0:${CHAT_SERVICE_PORT}"
+             if [ \"$DEBUG_MODE\" = \"true\" ]; then
+                python3 -m debugpy --listen 0.0.0.0:5678 --wait-for-client manage.py runserver 0.0.0.0:${CHAT_SERVICE_PORT};
+             else
+                python3 manage.py runserver 0.0.0.0:${CHAT_SERVICE_PORT};
+             fi"
     networks:
       - chat-network
 
@@ -114,3 +124,5 @@ volumes:
 networks:
   chat-network:
     driver: bridge
+#  python3 manage.py runserver 0.0.0.0:${AUTH_SERVICE_PORT}"
+#  python3 manage.py runserver 0.0.0.0:${CHAT_SERVICE_PORT}"
