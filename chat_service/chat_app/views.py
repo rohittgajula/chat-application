@@ -121,6 +121,10 @@ def search_user_by_username(usernames):
         return []
 
 
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
+
+
 @api_view(['POST'])
 @require_auth
 def CreateRoom(request):
@@ -177,22 +181,33 @@ def CreateRoom(request):
             room_name = f"chat-{current_username}-{other_username}"
 
             room, created = Room.get_or_create_direct_room(
-                                current_user_id, 
+                                current_user_id,
                                 other_user_ids,
                                 room_name=room_name
                         )
 
-            message = "direct room created" if created else "existing direct room found"
+            message = "Direct room created successfully" if created else "Room already exists"
 
         # ============ broadcast room creation for ws ==============
+
+        ws_protocol = 'wss' if request.is_secure() else 'ws'
+        host = request.get_host()
+        ws_url = f"{ws_protocol}://{host}/ws/chat/{room.room_id}/"
 
         # ==========================================================
 
         response_serializer = RoomSerializer(room)
+        status_code = status.HTTP_201_CREATED if (is_group or created) else status.HTTP_200_OK
+
         return Response({
             'message': message,
-            'room': response_serializer.data
-        }, status=status.HTTP_201_CREATED)
+            'room': response_serializer.data,
+            'websocket_url': ws_url,
+            'web_socket_info': {
+                'room_id': str(room.room_id),
+                'room_group_name': f"room_{room.room_id}"
+            }
+        }, status=status_code)
     
     return Response({
         "error": "Invalid data",

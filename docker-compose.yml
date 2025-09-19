@@ -60,9 +60,9 @@ services:
              python3 manage.py makemigrations &&
              python3 manage.py migrate &&
              if [ \"$DEBUG_MODE\" = \"true\" ]; then
-                python3 -m debugpy --listen 0.0.0.0:5678 --wait-for-client manage.py runserver 0.0.0.0:${CHAT_SERVICE_PORT};
+                python3 -m debugpy --listen 0.0.0.0:5678 --wait-for-client -m daphne -b 0.0.0.0 -p ${CHAT_SERVICE_PORT} chat_service.asgi:application;
              else
-                python3 manage.py runserver 0.0.0.0:${CHAT_SERVICE_PORT};
+                daphne -b 0.0.0.0 -p ${CHAT_SERVICE_PORT} chat_service.asgi:application;
              fi"
     networks:
       - chat-network

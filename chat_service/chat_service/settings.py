@@ -36,6 +36,7 @@ MICROSERVICE_SECRET_KEY = config('MICROSERVICE_SECRET_KEY', default='microservic
 # Application definition
 
 INSTALLED_APPS = [
+    "channels",
     "corsheaders",
     'django.contrib.admin',
     'django.contrib.auth',
@@ -49,6 +50,8 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "drf_yasg",
 ]
+
+ASGI_APPLICATION = "chat_service.asgi.application"
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -79,6 +82,14 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'chat_service.wsgi.application'
 
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [(config('REDIS_HOST', default='localhost'), config('REDIS_PORT', default=6379, cast=int))],
+        },
+    },
+}
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases

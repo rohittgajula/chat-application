@@ -23,36 +23,50 @@ class Room(models.Model):
     @classmethod
     def get_or_create_direct_room(cls, user1_id, user2_id, room_name=None):
         from django.db import models as django_models
-        
-        # Check if room already exists between these users
-        existing_rooms = cls.objects.filter(
-            is_group=False,
-            roommembers__user__in=[user1_id, user2_id]
-        ).annotate(
-            member_count=django_models.Count('roommembers')
-        ).filter(member_count=2)
-        
-        for room in existing_rooms:
-            users = list(room.roommembers.values_list('user', flat=True))
-            if set(users) == {user1_id, user2_id}:
-                return room, False
+        from django.db import transaction
 
-        if room_name is None:
-            room_name = f"Direct message"
-        
-        # Create new room if none exists
-        room = cls.objects.create(
-            room_name=room_name,
-            is_group=False,
-            created_by=user1_id
-        )
-        
-        # Add both users as members
-        from .models import RoomMembers
-        RoomMembers.objects.create(room=room, user=user1_id, role="admin")
-        RoomMembers.objects.create(room=room, user=user2_id, role="user")
-        
-        return room, True
+        # Use transaction to prevent race conditions
+        with transaction.atomic():
+            # Check if room already exists between these users
+            # Use a more efficient approach - find all non-group rooms
+            # that have exactly 2 members where both users are present
+            existing_room = cls.objects.filter(
+                is_group=False
+            ).annotate(
+                member_count=django_models.Count('roommembers', distinct=True),
+                has_user1=django_models.Exists(
+                    RoomMembers.objects.filter(room=django_models.OuterRef('pk'), user=user1_id)
+                ),
+                has_user2=django_models.Exists(
+                    RoomMembers.objects.filter(room=django_models.OuterRef('pk'), user=user2_id)
+                )
+            ).filter(
+                member_count=2,
+                has_user1=True,
+                has_user2=True
+            ).first()
+
+            # If we found a room with exactly these 2 users, return it
+            if existing_room:
+                print(f"DEBUG: Found existing room {existing_room.room_id}")
+                return existing_room, False
+
+            if room_name is None:
+                room_name = f"Direct message"
+
+            print(f"DEBUG: Creating new room for users {user1_id} and {user2_id}")
+            # Create new room if none exists
+            room = cls.objects.create(
+                room_name=room_name,
+                is_group=False,
+                created_by=user1_id
+            )
+
+            # Add both users as members
+            RoomMembers.objects.create(room=room, user=user1_id, role="admin")
+            RoomMembers.objects.create(room=room, user=user2_id, role="user")
+
+            return room, True
 
 
 
@@ -63,7 +77,7 @@ class RoomMembers(models.Model):
         ("user", "User")
     ]
     id = models.UUIDField(primary_key=True, editable=False, default=uuid.uuid4)
-    room = models.ForeignKey(Room, on_delete=models.CASCADE)
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name='roommembers')
     user = models.UUIDField(null=False, blank=False, help_text="Reference to User ID from auth service")
     role = models.CharField(max_length=20, choices=ROOM_MEMBER_ROLE, default="user")
     joined_at = models.DateTimeField(auto_now_add=True)
