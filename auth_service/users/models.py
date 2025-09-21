@@ -63,6 +63,9 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
 
     objects = CustomUserManager()
 
+    class Mets:
+        db_table = "User"
+
     def __str__(self):
         return f'{self.username} - {self.email}'
     
@@ -81,6 +84,7 @@ class Contact(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = "Contact"
         unique_together = ('user', 'contact')
 
     def __str__(self):

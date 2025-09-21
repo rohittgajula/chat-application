@@ -6,6 +6,7 @@ from django.http import JsonResponse
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.decorators import api_view, APIView
+from django.utils.decorators import method_decorator
 
 AUTH_SERVICE_URL = os.environ.get("AUTH_SERVICE_URL")
 
@@ -123,95 +124,96 @@ def search_user_by_username(usernames):
 
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
+from .serializers import RoomSerializer, CreateRoomSerializer
+from .models import Room, RoomMembers
 
 
-@api_view(['POST'])
-@require_auth
-def CreateRoom(request):
-    from .serializers import RoomSerializer, CreateRoomSerializer
-    from .models import Room, RoomMembers
+@method_decorator(require_auth, name='dispatch')
+class CreateRoom(APIView):
 
-    data = request.data
-    print(f"received data: {data}")
-    print(F"CHAT SERVICE: user_data: {request.user_data}")
-    serializer = CreateRoomSerializer(data=data)
+    def post(self, request):
 
-    if serializer.is_valid():
-        usernames = serializer.validated_data['usernames']
-        is_group = serializer.validated_data['is_group']
-        print(f"CHAT SERVICE: serializer data: {serializer.data}")
+        data = request.data
+        print(f"received data: {data}")
+        print(F"CHAT SERVICE: user_data: {request.user_data}")
+        serializer = CreateRoomSerializer(data=data)
 
-        found_users = search_user_by_username(usernames)
+        if serializer.is_valid():
+            usernames = serializer.validated_data['usernames']
+            is_group = serializer.validated_data['is_group']
+            print(f"CHAT SERVICE: serializer data: {serializer.data}")
 
-        if len(found_users) != len(usernames):
-            found_usernames = [user['username'] for user in found_users]
-            missing_usernames = list(set(usernames) - set(found_usernames))
-            return Response({
-                "error": f"users not found: {missing_usernames}"
-            }, status=status.HTTP_404_NOT_FOUND)
-        
-        # get user ids
-        other_user_ids = [user['id'] for user in found_users]
-        current_user_id = request.user_data['id']
-        current_username = request.user_data['username']
+            found_users = search_user_by_username(usernames)
 
-        if is_group:
-            room = Room.objects.create(
-                room_name = serializer.validated_data['room_name'],
-                description = serializer.validated_data.get('description', ''),
-                is_group=True,
-                created_by=current_user_id
-            )
+            if len(found_users) != len(usernames):
+                found_usernames = [user['username'] for user in found_users]
+                missing_usernames = list(set(usernames) - set(found_usernames))
+                return Response({
+                    "error": f"users not found: {missing_usernames}"
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            # get user ids
+            other_user_ids = [user['id'] for user in found_users]
+            current_user_id = request.user_data['id']
+            current_username = request.user_data['username']
 
-            # add creater as admin
-            RoomMembers.objects.create(room=room, user=current_user_id, role="admin")
-
-            # add other users
-            for user_id in other_user_ids:
-                RoomMembers.objects.create(
-                    room=room,
-                    user=user_id,
-                    role="user"
+            if is_group:
+                room = Room.objects.create(
+                    room_name = serializer.validated_data['room_name'],
+                    description = serializer.validated_data.get('description', ''),
+                    is_group=True,
+                    created_by=current_user_id
                 )
-                message = f"Group room created with {len(other_user_ids) + 1} members"
-        else:
-            other_user_ids=other_user_ids[0]
-            other_username = found_users[0]['username']
 
-            room_name = f"chat-{current_username}-{other_username}"
+                # add creater as admin
+                RoomMembers.objects.create(room=room, user=current_user_id, role="admin")
 
-            room, created = Room.get_or_create_direct_room(
-                                current_user_id,
-                                other_user_ids,
-                                room_name=room_name
-                        )
+                # add other users
+                for user_id in other_user_ids:
+                    RoomMembers.objects.create(
+                        room=room,
+                        user=user_id,
+                        role="user"
+                    )
+                    message = f"Group room created with {len(other_user_ids) + 1} members"
+            else:
+                other_user_ids=other_user_ids[0]
+                other_username = found_users[0]['username']
 
-            message = "Direct room created successfully" if created else "Room already exists"
+                room_name = f"chat-{current_username}-{other_username}"
 
-        # ============ broadcast room creation for ws ==============
+                room, created = Room.get_or_create_direct_room(
+                                    current_user_id,
+                                    other_user_ids,
+                                    room_name=room_name
+                            )
 
-        ws_protocol = 'wss' if request.is_secure() else 'ws'
-        host = request.get_host()
-        ws_url = f"{ws_protocol}://{host}/ws/chat/{room.room_id}/"
+                message = "Direct room created successfully" if created else "Room already exists"
 
-        # ==========================================================
+            # ============ broadcast room creation for ws ==============
 
-        response_serializer = RoomSerializer(room)
-        status_code = status.HTTP_201_CREATED if (is_group or created) else status.HTTP_200_OK
+            ws_protocol = 'wss' if request.is_secure() else 'ws'
+            host = request.get_host()
+            ws_url = f"{ws_protocol}://{host}/ws/chat/{room.room_id}/"
 
+            # ==========================================================
+
+            response_serializer = RoomSerializer(room)
+            status_code = status.HTTP_201_CREATED if (is_group or created) else status.HTTP_200_OK
+
+            return Response({
+                'message': message,
+                'room': response_serializer.data,
+                'websocket_url': ws_url,
+                'web_socket_info': {
+                    'room_id': str(room.room_id),
+                    'room_group_name': f"room_{room.room_id}"
+                }
+            }, status=status_code)
+        
         return Response({
-            'message': message,
-            'room': response_serializer.data,
-            'websocket_url': ws_url,
-            'web_socket_info': {
-                'room_id': str(room.room_id),
-                'room_group_name': f"room_{room.room_id}"
-            }
-        }, status=status_code)
-    
-    return Response({
-        "error": "Invalid data",
-        "details": serializer.errors
-    }, status=status.HTTP_400_BAD_REQUEST)
+            "error": "Invalid data",
+            "details": serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
 
 

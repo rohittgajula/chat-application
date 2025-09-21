@@ -14,6 +14,7 @@ class Room(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        db_table = "Room"
         indexes = [
             models.Index(fields=['created_by', '-created_at']),
             models.Index(fields=['is_group', '-updated_at']),
@@ -83,6 +84,7 @@ class RoomMembers(models.Model):
     joined_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = "RoomMember"
         unique_together = ('room', 'user')
         indexes = [
               models.Index(fields=['user', 'room']),
@@ -108,6 +110,7 @@ class Message(models.Model):
     mentions = models.JSONField(default=list, blank=True, help_text="List of mentioned users uuid's")
 
     class Meta:
+        db_table = "Message"
         ordering = ['-created_at']
         indexes = [
               models.Index(fields=['room', '-created_at']),
@@ -131,6 +134,7 @@ class MessageStatus(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+          db_table = "MessageStatus"
           unique_together = ('message', 'user')  # One status per user per message
           indexes = [
               models.Index(fields=['message', 'user']),
@@ -145,6 +149,9 @@ class RoomSettings(models.Model):
     is_private = models.BooleanField(default=False)
     allow_file_sharing = models.BooleanField(default=False)
 
+    class Meta:
+        db_table = "RoomSettings"
+
 
 class UserActivity(models.Model):
     user = models.UUIDField(help_text="Reference to User ID from auth service")
@@ -154,6 +161,7 @@ class UserActivity(models.Model):
     typing_updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+          db_table = "UserActivity"
           unique_together = ('user', 'room')  # One activity record per user per room
   
           indexes = [
