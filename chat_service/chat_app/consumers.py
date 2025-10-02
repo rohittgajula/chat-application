@@ -137,6 +137,28 @@ class RoomConsumer(AsyncWebsocketConsumer):
         )
 
         if message:
+            # Publish message event to Kafka
+            try:
+                from chat_service.kafka_utils import kafka_service, ChatEvents
+
+                message_event = ChatEvents.message_sent(
+                    {
+                        'id': message.id,
+                        'content': message.content,
+                        'message_type': message.message_type,
+                        'file_url': message.file_url,
+                        'mentions': message.mentions,
+                        'created_at': message.created_at.isoformat(),
+                        'is_edited': message.is_edited
+                    },
+                    self.room_id,
+                    user_data['id']
+                )
+
+                await self.publish_kafka_event_async('chat.events', message_event, str(message.id))
+            except Exception as e:
+                print(f"Failed to publish message event to Kafka: {e}")
+
             # Broadcast message to other room members (excluding sender)
             await self.channel_layer.group_send(
                 self.room_group_name,
@@ -334,3 +356,15 @@ class RoomConsumer(AsyncWebsocketConsumer):
             return True
         except Room.DoesNotExist:
             return False
+
+    async def publish_kafka_event_async(self, topic: str, event_data: dict, key: str = None):
+        """Publish Kafka event from async context"""
+        import asyncio
+        from chat_service.kafka_utils import kafka_service
+
+        def publish_sync():
+            return kafka_service.publish_event(topic, event_data, key)
+
+        # Run the sync Kafka publish in a thread pool
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, publish_sync)

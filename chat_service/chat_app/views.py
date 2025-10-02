@@ -97,25 +97,49 @@ def test_auth(request):                 # test endpoint without auth
 
 
 def search_user_by_username(usernames):
+    """
+    Search for users using Kafka messaging with fallback to cache
+    """
+    from chat_service.kafka_utils import kafka_service
+
     try:
-        from django.conf import settings
+        # First check cache for existing users
+        found_users, missing_usernames = kafka_service.get_cached_users(usernames)
 
-        if not AUTH_SERVICE_URL:
-            return []
-        
-        response = requests.post(
-            f"{AUTH_SERVICE_URL}/users/search-by-username/",
-            headers={
-                "X-Service-Key": getattr(settings, 'MICROSERVICE_SECRET_KEY', ''),
-                "Content-Type": "application/json"
-            },
-            json={"usernames": usernames},
-            timeout=10
-        )
+        if not missing_usernames:
+            # All users found in cache
+            return found_users
 
-        if response.status_code == 200:
-            return response.json().get('users', [])
-        return []
+        # For missing users, try fallback to direct HTTP (temporary during transition)
+        if AUTH_SERVICE_URL and missing_usernames:
+            try:
+                from django.conf import settings
+
+                response = requests.post(
+                    f"{AUTH_SERVICE_URL}/users/search-by-username/",
+                    headers={
+                        "X-Service-Key": getattr(settings, 'MICROSERVICE_SECRET_KEY', ''),
+                        "Content-Type": "application/json"
+                    },
+                    json={"usernames": missing_usernames},
+                    timeout=5  # Reduced timeout for fallback
+                )
+
+                if response.status_code == 200:
+                    missing_users = response.json().get('users', [])
+                    # Cache the newly found users
+                    kafka_service.cache_users(missing_users)
+                    return found_users + missing_users
+            except Exception as e:
+                print(f"Fallback user search error: {e}")
+
+        # If fallback fails, publish Kafka request for future requests
+        if missing_usernames:
+            request_id = kafka_service.publish_user_search_request(missing_usernames)
+            print(f"Published user search request {request_id} for {missing_usernames}")
+
+        # Return what we have in cache
+        return found_users
 
     except Exception as e:
         print(f"User search error: {e}")
@@ -197,6 +221,27 @@ class CreateRoom(APIView):
             ws_url = f"{ws_protocol}://{host}/ws/chat/{room.room_id}/"
 
             # ==========================================================
+
+            # Publish room creation event to Kafka
+            try:
+                from chat_service.kafka_utils import kafka_service, ChatEvents
+
+                members = [current_user_id] + (other_user_ids if is_group else [other_user_ids])
+                room_event = ChatEvents.room_created(
+                    {
+                        'room_id': room.room_id,
+                        'room_name': room.room_name,
+                        'is_group': room.is_group,
+                        'description': getattr(room, 'description', ''),
+                        'created_at': room.created_at.isoformat()
+                    },
+                    current_user_id,
+                    members
+                )
+
+                kafka_service.publish_event('chat.events', room_event, key=str(room.room_id))
+            except Exception as e:
+                print(f"Failed to publish room creation event: {e}")
 
             response_serializer = RoomSerializer(room)
             status_code = status.HTTP_201_CREATED if (is_group or created) else status.HTTP_200_OK

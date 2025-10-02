@@ -12,6 +12,56 @@ services:
     env_file:
       - .env
 
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - chat-network
+    restart: unless-stopped
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_LOG_RETENTION_HOURS: 168
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - chat-network
+    restart: unless-stopped
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      DYNAMIC_CONFIG_ENABLED: 'true'
+    networks:
+      - chat-network
+    restart: unless-stopped
+
   auth_service:
     build: ./auth_service
     container_name: auth_service
@@ -25,6 +75,7 @@ services:
     depends_on:
       - auth_postgres
       - redis
+      - kafka
     restart: unless-stopped
     command: >
       sh -c "pip install -r requirements.txt &&
@@ -53,6 +104,7 @@ services:
     depends_on:
       - chat_postgres
       - redis
+      - kafka
       - auth_service
     restart: unless-stopped
     command: >
@@ -80,6 +132,42 @@ services:
     command: >
       sh -c "pip install -r requirements.txt &&
               celery -A auth_service.celery worker --loglevel=info"
+    networks:
+      - chat-network
+
+  auth-kafka-consumer:
+    build: ./auth_service
+    container_name: auth-kafka-consumer
+    depends_on:
+      - kafka
+      - auth_postgres
+    volumes:
+      - ./auth_service:/app
+    env_file:
+      - .env
+    restart: unless-stopped
+    command: >
+      sh -c "pip install -r requirements.txt &&
+             python3 manage.py migrate &&
+             python3 manage.py start_kafka_consumer"
+    networks:
+      - chat-network
+
+  chat-kafka-consumer:
+    build: ./chat_service
+    container_name: chat-kafka-consumer
+    depends_on:
+      - kafka
+      - chat_postgres
+    volumes:
+      - ./chat_service:/app
+    env_file:
+      - .env
+    restart: unless-stopped
+    command: >
+      sh -c "pip install -r requirements.txt &&
+             python3 manage.py migrate &&
+             python3 manage.py start_kafka_consumer"
     networks:
       - chat-network
 
@@ -120,6 +208,7 @@ services:
 volumes:
   auth_postgres_data:
   chat_postgres_data:
+  kafka_data:
 
 networks:
   chat-network:

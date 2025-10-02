@@ -29,6 +29,16 @@ def create_user(request):
             serializer.save()
             send_otp_via_mail.delay(serializer.data['email'])
             otp_timer.apply_async((serializer.data['email'],), countdown=600)
+
+            # Publish user registration event to Kafka
+            try:
+                from auth_service.kafka_utils import kafka_service, UserEvents
+
+                user_event = UserEvents.user_registered(serializer.data)
+                kafka_service.publish_event('user.events', user_event, key=str(serializer.data['id']))
+            except Exception as e:
+                print(f"Failed to publish user registration event: {e}")
+
             return Response({
                 "message": f"Registered sucessfully. OTP sent to {data['email']}, expires in 10min",
                 'data':serializer.data
@@ -65,6 +75,16 @@ def verify_otp(request):
         else:
             user.is_verified = True
             user.save()
+
+            # Publish user verification event to Kafka
+            try:
+                from auth_service.kafka_utils import kafka_service, UserEvents
+
+                user_event = UserEvents.user_verified(str(user.id), user.username)
+                kafka_service.publish_event('user.events', user_event, key=str(user.id))
+            except Exception as e:
+                print(f"Failed to publish user verification event: {e}")
+
             return Response({
                 'message':"Account verified."
             }, status=status.HTTP_202_ACCEPTED)
